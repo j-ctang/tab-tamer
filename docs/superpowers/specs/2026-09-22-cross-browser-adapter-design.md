@@ -6,11 +6,12 @@ carry forward as-is.
 
 ## Why
 
-Original plan was Chrome-first with `chrome.tabGroups`. User's actual
-daily browser is Safari, and the eventual target is multiple browsers
-(Chrome + Safari now, more later). Safari Web Extensions have no
-public API to create/color tab groups, so the "apply groups" step
-needs a browser-specific implementation, not just a permissions tweak.
+Original plan was Chrome-first with `chrome.tabGroups`. User's actual daily
+browser is Safari, and the eventual target is multiple browsers. Safari can
+capture tabs and run the shared classification UI, but its WebExtension API
+supports neither tab groups nor `tabs.move`. Therefore Chrome supports preview
+and apply, while Safari is preview-only. The UI must say so and must never
+offer an apply action that depends on unsupported APIs.
 
 ## Architecture
 
@@ -19,9 +20,9 @@ extension/
   core.js                 # unchanged: pure decision logic, browser-agnostic
   adapters/
     chrome.js              # captureTabs(), applyResult() via chrome.tabGroups
-    safari.js               # captureTabs(), applyResult() via 4 new windows
+    safari.js               # captureTabs(); apply explicitly unsupported
   api.js                    # globalThis.browser ?? globalThis.chrome, thin shim only (no dependency)
-  background.js             # opens the dashboard page only
+  background.js             # self-contained classic script; opens dashboard only
   app.js                     # dashboard UI logic, unchanged concept
   dashboard.js               # picks adapter by runtime feature detection, mounts app.js
   dashboard.html/css
@@ -36,12 +37,13 @@ tests/
 
 ### Adapter interface
 
-Both adapters implement the same two functions, so `dashboard.js` and
-tests never branch on browser identity directly:
+Both adapters export the same functions plus a capability flag, so
+`dashboard.js` and tests do not branch on browser identity directly:
 
 ```js
 // captureTabs(api, windowId) -> Promise<RawTab[]>
 // applyResult(decisions, threshold, windowId, api) -> Promise<{ grouped: number, skipped: number }>
+// supportsApply -> boolean
 ```
 
 `core.js` stays the single source of truth for what counts as
@@ -58,23 +60,16 @@ untouched). Behavior identical to the original Chrome design.
 
 ### Safari adapter (`safari.js`)
 
-No tab-group API available. Applies result by:
-1. Re-querying the source window; skip any tab whose URL changed or
-   that left the window since capture (same staleness rule as Chrome).
-2. For each of the 3 non-review categories with at least one eligible
-   tab, open one new window (`browser.windows.create`) titled by
-   category, then move matching tabs into it (`browser.tabs.move`).
-3. `review`-category tabs are left untouched in the original window,
-   same as Chrome adapter's behavior for below-threshold tabs.
+Safari exports `captureTabs` and `supportsApply = false`. `applyResult()`
+throws a clear compatibility error as a defense in depth; the dashboard uses
+the capability flag to disable Apply before it can be called. Classification,
+the confidence slider, and the four-column preview remain functional.
 
-This is a real UX difference from Chrome (separate windows vs. inline
-colored groups) — approved as the only option given Safari's API
-surface. The per-category windows are also not labeled by category:
-Safari extensions have no native window-title API, so there is no way
-to set a window's title/label the way Chrome's `tabGroups.update`
-titles a group. This is an accepted deviation from an earlier draft
-of this spec, not an oversight — do not attempt to implement window
-labeling for Safari.
+Do not attempt the earlier per-category-window design. Apple documents
+`tabs.move` as unsupported in Safari, and Safari has no tab-group API. Opening
+duplicate URLs and closing the originals would violate the no-tab-closing
+constraint and would lose tab history/state, so it is not an acceptable
+fallback. A native-app bridge is a possible future design, outside this spec.
 
 ### Cross-browser shim (`api.js`)
 
@@ -93,7 +88,7 @@ callback-to-promise conversion needed.
 const sessionStore = api.storage.session ?? api.storage.local;
 ```
 
-Feature-detected at the point of use in `app.js`/`background.js`.
+Feature-detected at the point of use in `app.js`.
 `storage.session` is preferred (cleared when the browser closes);
 falls back to `storage.local` on older Safari where `storage.session`
 is absent. No version-sniffing — pure capability check.
@@ -102,15 +97,18 @@ is absent. No version-sniffing — pure capability check.
 
 Two manifest files, `manifest.chrome.json` and `manifest.safari.json`,
 both Manifest V3. They differ only in:
-- `background` key shape (Chrome: `service_worker`; Safari: `scripts`
-  background page — both supported per-browser, no shared field).
+- `background` key shape (Chrome: module `service_worker`; Safari: classic
+  `scripts` background page). `background.js` has no imports so the same file
+  works in both forms; this avoids Safari converter/runtime dependence on the
+  optional background `type: "module"` key.
 - `browser_specific_settings.safari` block present only in the Safari
   manifest.
 - `permissions`: Chrome manifest includes `tabGroups`; Safari manifest
   omits it (unused, and Safari would reject an unknown permission).
-- `host_permissions` explicitly lists `https://api.typesafe.ai/*` in
-  both, required for the live-mode fetch to pass Safari's stricter
-  host-permission enforcement.
+- `host_permissions`: Chrome explicitly lists `https://api.typesafe.ai/*` for
+  the live-mode fetch. Safari lists HTTP and HTTPS match patterns because
+  Safari also requires host permission for `tabs` to expose arbitrary tab
+  titles and URLs; those patterns include the Jev endpoint.
 
 No build step generates these — both files are committed directly,
 hand-maintained, since the set of differences is small and static.
@@ -126,8 +124,9 @@ dependency-free architecture decision).
 
 ## Known gaps (carried forward, not solved by this spec)
 
-- No Safari extension automation for CI — end-to-end "load extension
-  and verify grouping" stays a manual, real-Safari verification step.
+- No Safari extension automation for CI — end-to-end capture and preview stay
+  a manual, real-Safari verification step. Safari apply is intentionally
+  unavailable.
   Chrome adapter *is* automatable later (Puppeteer + `--load-extension`)
   if desired, but that's out of scope for this spec.
 - Safari requires enabling unsigned extensions (Develop menu) each
@@ -146,10 +145,12 @@ dependency-free architecture decision).
 ## Testing
 
 - `core.test.js`: unchanged, already covers decision layer.
-- `adapters.test.js` (replaces `browser.test.js`): tests `chrome.js`
-  and `safari.js` each against fake `api` objects (same pattern as the
-  existing `browser.test.js` fakes) — staleness exclusion, threshold
-  exclusion, and (Safari only) correct window-per-category grouping.
+- `adapters-shared.test.js`, `adapters-chrome.test.js`, and
+  `adapters-safari.test.js` replace `browser.test.js`: they cover Chrome
+  grouping/staleness and verify that Safari reports apply as unsupported
+  without calling `tabs.move`.
+- `background.test.js` executes `background.js` as a classic script and proves
+  the toolbar action opens the dashboard, protecting Safari compatibility.
 - `node --check` extended to all new files in `package.json`'s `check`
   script (`api.js`, `adapters/chrome.js`, `adapters/safari.js`,
   `background.js`, `app.js`).
@@ -163,9 +164,9 @@ New: `extension/adapters/chrome.js`, `extension/adapters/safari.js`,
 `extension/api.js`, `extension/background.js`, `extension/app.js`,
 `extension/dashboard.html`, `extension/dashboard.css`,
 `extension/manifest.chrome.json`, `extension/manifest.safari.json`,
-`scripts/preview.js`, `tests/adapters.test.js`, `README.md`.
+`scripts/preview.js`, the adapter/background tests, `README.md`.
 
 Removed: `extension/browser.js` (stub, replaced by adapters),
-`tests/browser.test.js` (replaced by `adapters.test.js`).
+`tests/browser.test.js` (replaced by the adapter test files).
 
 Unchanged: `extension/core.js`, `tests/core.test.js`.

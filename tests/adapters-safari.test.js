@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyResult } from '../extension/adapters/safari.js';
+import { applyResult, supportsApply } from '../extension/adapters/safari.js';
 
 const decisions = [
   { id: 1, windowId: 5, url: 'https://a.com/', title: 'A', category: 'focus', confidence: 0.95 },
@@ -37,22 +37,11 @@ function fakeApi(queryResult) {
   };
 }
 
-test('opens one window per non-empty category, moves tabs in, closes the placeholder', async () => {
-  const { api, windows, moves, removed } = fakeApi([
-    { id: 1, url: 'https://a.com/' }, { id: 2, url: 'https://b.com/' },
-    { id: 3, url: 'https://c.com/' }, { id: 4, url: 'https://d.com/' },
-  ]);
-  const result = await applyResult(decisions, 0.8, 5, api);
-  assert.equal(windows.length, 3); // focus, later, distraction
-  assert.deepEqual(moves.map(m => m.tabIds).sort(), [[1, 3], [2], [4]]);
-  assert.equal(removed.length, 3); // one placeholder closed per window
-  assert.equal(result.grouped, 4);
-  assert.equal(result.skipped, 0);
-});
+test('reports Safari apply as unsupported instead of calling tabs.move', async () => {
+  const { api, windows, moves } = fakeApi(decisions.map(({ id, url }) => ({ id, url })));
 
-test('stale and below-threshold tabs open no window for their category', async () => {
-  const { api, windows } = fakeApi([{ id: 1, url: 'https://a.com/' }]);
-  const result = await applyResult(decisions, 1, 5, api);
+  assert.equal(supportsApply, false);
+  await assert.rejects(applyResult(decisions, 0.8, 5, api), /Safari.*move or group tabs/i);
   assert.equal(windows.length, 0);
-  assert.equal(result.grouped, 0);
+  assert.equal(moves.length, 0);
 });

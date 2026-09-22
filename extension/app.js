@@ -25,6 +25,11 @@ export function runSampleMode(threshold) {
   return { decisions: SAMPLE_DECISIONS, columns: columnsFor(SAMPLE_DECISIONS, threshold) };
 }
 
+export function canApply(columns, mode, adapterSupportsApply) {
+  const hasApplyable = columns.focus.length + columns.later.length + columns.distraction.length > 0;
+  return mode === 'live' && adapterSupportsApply && hasApplyable;
+}
+
 export async function runLiveMode({ tabs, goal, apiKey, threshold, fetcher }) {
   const { decisions, model, elapsed } = await classify(tabs, goal, apiKey, fetcher);
   return { decisions, columns: columnsFor(decisions, threshold), model, elapsed };
@@ -68,8 +73,10 @@ export function mount(document, api, adapter) {
       }
       board.appendChild(column);
     }
-    const hasApplyable = columns.focus.length + columns.later.length + columns.distraction.length > 0;
-    applyButton.disabled = !(modeInput.value === 'live' && hasApplyable);
+    applyButton.disabled = !canApply(columns, modeInput.value, adapter.supportsApply);
+    if (modeInput.value === 'live' && adapter.supportsApply === false) {
+      status.textContent = 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
+    }
   }
 
   async function organize() {
@@ -104,6 +111,13 @@ export function mount(document, api, adapter) {
   }
 
   async function apply() {
+    if (modeInput.value !== 'live' || adapter.supportsApply === false) {
+      status.textContent = modeInput.value === 'sample'
+        ? 'Sample mode: nothing to apply.'
+        : 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
+      applyButton.disabled = true;
+      return;
+    }
     if (lastWindowId === null) {
       status.textContent = 'Sample mode: nothing to apply.';
       return;
@@ -125,6 +139,13 @@ export function mount(document, api, adapter) {
 
   organizeButton.addEventListener('click', organize);
   applyButton.addEventListener('click', apply);
+  modeInput.addEventListener('change', () => {
+    lastDecisions = [];
+    lastWindowId = null;
+    board.innerHTML = '';
+    status.textContent = '';
+    applyButton.disabled = true;
+  });
   thresholdInput.addEventListener('input', () => {
     thresholdValue.textContent = thresholdInput.value;
     if (lastDecisions.length) render(columnsFor(lastDecisions, Number(thresholdInput.value)));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { columnsFor, validateGoal, runSampleMode } from '../extension/app.js';
+import { canApply, columnsFor, validateGoal, runSampleMode } from '../extension/app.js';
 import { SAMPLE_DECISIONS } from '../extension/fixtures.js';
 
 test('columnsFor buckets by post-threshold category, covering all four columns', () => {
@@ -29,4 +29,11 @@ test('sample mode never touches the network and covers all columns', () => {
   const { decisions, columns } = runSampleMode(0.7);
   assert.equal(decisions.length, SAMPLE_DECISIONS.length);
   assert.ok(columns.focus.length + columns.later.length + columns.distraction.length + columns.review.length === decisions.length);
+});
+
+test('apply is available only for live results on a browser that supports it', () => {
+  const columns = columnsFor(SAMPLE_DECISIONS, 0.7);
+  assert.equal(canApply(columns, 'live', true), true);
+  assert.equal(canApply(columns, 'sample', true), false);
+  assert.equal(canApply(columns, 'live', false), false);
 });

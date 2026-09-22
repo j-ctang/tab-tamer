@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sanitizeTabs, classify } from '../extension/core.js';
 import { applyResult as chromeApplyResult } from '../extension/adapters/chrome.js';
-import { applyResult as safariApplyResult } from '../extension/adapters/safari.js';
 
 // Full pipeline: raw (unsanitized) tabs -> sanitizeTabs -> classify (fake fetcher)
 // -> adapter.applyResult (fake browser api). A tab whose raw URL carries a
 // query string or fragment, but is otherwise unchanged, must NOT be treated
-// as stale by either adapter's applyResult.
+// as stale by Chrome's applyResult. Safari is preview-only because its
+// WebExtension API does not support moving or grouping tabs.
 
 const rawTabs = [
   { id: 1, windowId: 5, title: 'Search results', url: 'https://search.example.com/?q=tab+tamer', pinned: false, incognito: false },
@@ -47,32 +47,4 @@ test('chrome adapter: query-string/fragment tabs that did not actually change ar
   assert.equal(result.skipped, 0);
   assert.equal(result.grouped, 2);
   assert.deepEqual(groupCalls.flat().sort(), [1, 2]);
-});
-
-test('safari adapter: query-string/fragment tabs that did not actually change are not marked stale', async () => {
-  const decisions = await classifyFixture();
-  const moves = [];
-  const removed = [];
-  let nextWindowId = 200;
-  const api = {
-    tabs: {
-      query: async () => rawTabs.map(({ id, url }) => ({ id, url })),
-      move: async (tabIds, { windowId, index }) => {
-        assert.equal(typeof index, 'number');
-        moves.push({ tabIds, windowId });
-      },
-      remove: async (tabId) => { removed.push(tabId); },
-    },
-    windows: {
-      create: async () => {
-        const id = nextWindowId++;
-        return { id, tabs: [{ id: id * 1000 }] };
-      },
-    },
-  };
-  const result = await safariApplyResult(decisions, 0.8, 5, api);
-  assert.equal(result.skipped, 0);
-  assert.equal(result.grouped, 2);
-  assert.deepEqual(moves.map(m => m.tabIds).sort(), [[1], [2]]);
-  assert.equal(removed.length, 2);
 });

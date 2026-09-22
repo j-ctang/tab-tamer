@@ -46,11 +46,14 @@ commit one; generate it locally:
 5. In Safari: Develop menu → Allow Unsigned Extensions (required every
    Safari restart unless the app is signed with a paid Apple Developer
    ID).
+6. Grant website access for all sites when Safari prompts. Safari requires
+   host access for the extension to read the titles and URLs of the tabs it
+   organizes; live mode only sends them to Jev after you explicitly preview.
 
 ## Known limitations
 
-- Safari has no API to create native colored tab groups, so applying
-  a result opens one new window per category instead.
+- Safari can capture and preview classifications, but Safari WebExtensions do
+  not support `tabs.move` or tab-group APIs, so applying results is Chrome-only.
 - No CI coverage for actually loading the extension in either browser;
   that step is manual (see above).
 - Live mode is implemented but unverified end-to-end — no API key has

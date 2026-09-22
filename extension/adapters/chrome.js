@@ -2,6 +2,7 @@ import { captureTabs, partitionByCategory } from './shared.js';
 import { GROUPS } from '../core.js';
 
 export { captureTabs };
+export const supportsApply = true;
 
 export async function applyResult(decisions, threshold, windowId, api) {
   const { byCategory, skipped } = await partitionByCategory(decisions, threshold, windowId, api);

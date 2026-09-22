@@ -1,10 +1,17 @@
 # Cross-Browser Adapter (Chrome + Safari) Implementation Plan
 
+> **Final-verification amendment:** Task 3's per-category-window design is
+> superseded. Apple documents `tabs.move` as unsupported in Safari and Safari
+> has no tab-group API. The delivered Safari adapter is preview-only,
+> advertises `supportsApply = false`, and the dashboard disables Apply. Chrome
+> preview/apply behavior is unchanged. The detailed Task 3 steps below are
+> retained as implementation history, not current requirements.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the Chrome-only `browser.js` stub with a shared adapter interface implemented for both Chrome (`chrome.tabGroups`) and Safari (per-category windows), plus the dashboard UI and packaging needed to run Tab Tamer on both browsers.
+**Goal:** Replace the Chrome-only `browser.js` stub with a shared adapter interface for Chrome and Safari, with Chrome apply support and Safari capture/preview support, plus the dashboard UI and packaging needed to run Tab Tamer on both browsers.
 
-**Architecture:** `core.js` (pure decision logic) stays unchanged and browser-agnostic. A new `adapters/shared.js` holds the browser-agnostic parts of tab capture and staleness/threshold partitioning; `adapters/chrome.js` and `adapters/safari.js` each add only the browser-specific "apply result" step. `background.js` only opens the dashboard page; `dashboard.js` (the dashboard's bootstrap module) picks an adapter at runtime by feature-detecting `api.tabGroups` and mounts `app.js`. `app.js` drives the dashboard: sample mode (fixture data, no network) and live mode (`core.classify` + adapter `applyResult`).
+**Architecture:** `core.js` (pure decision logic) stays unchanged and browser-agnostic. A new `adapters/shared.js` holds browser-agnostic tab capture and staleness/threshold partitioning; `adapters/chrome.js` applies native groups, while `adapters/safari.js` declares apply unsupported. `background.js` only opens the dashboard page; `dashboard.js` picks an adapter by feature detection and mounts `app.js`. `app.js` drives sample and live classification and enables Apply only when the selected adapter supports it.
 
 **Tech Stack:** Vanilla JS (ESM), no bundler, no external dependencies. Node built-in test runner (`node --test`) for unit tests. Two static Manifest V3 JSON files, one per browser.
 
@@ -13,11 +20,18 @@
 ## Global Constraints
 
 - No external npm dependencies — hand-rolled `globalThis.browser ?? globalThis.chrome` shim, not `webextension-polyfill`.
+- `background.js` must remain import-free so Safari can load it as a classic
+  `background.scripts` entry; Chrome may still load the same file as a module
+  service worker.
 - `core.js` and `tests/core.test.js` are unchanged by this plan.
 - Confidence threshold comparison is inclusive (`confidence >= threshold` counts as the category; below it is `review`) — already implemented in `core.js:categoryFor`, adapters must reuse it, not reimplement it.
 - `storage.session` preferred for the API key, falling back to `storage.local` only when `storage.session` is undefined (no version-sniffing).
-- Safari `applyResult` opens one new window per non-empty category and closes each window's placeholder blank tab after moving real tabs in.
-- `manifest.chrome.json` includes the `tabGroups` permission; `manifest.safari.json` omits it. Both declare `host_permissions: ["https://api.typesafe.ai/*"]`.
+- Safari is preview-only because its WebExtension API supports neither
+  `tabs.move` nor tab groups. The dashboard disables Apply for that adapter.
+- `manifest.chrome.json` includes the `tabGroups` permission and grants the Jev
+  endpoint. `manifest.safari.json` omits `tabGroups` and grants HTTP/HTTPS host
+  access because Safari requires host permission for `tabs` to expose the tab
+  titles and URLs being organized.
 - No Xcode project is committed; Safari packaging is a documented manual step in `README.md`.
 
 ---
@@ -31,7 +45,7 @@
 **Interfaces:**
 - Consumes: `categoryFor(decision, threshold)` from `extension/core.js` (existing, unchanged).
 - Produces:
-  - `captureTabs(api, windowId) -> Promise<RawTab[]>` — used by both adapters and `background.js`.
+  - `captureTabs(api, windowId) -> Promise<RawTab[]>` — used by both adapters and the dashboard.
   - `partitionByCategory(decisions, threshold, windowId, api) -> Promise<{ byCategory: { focus: number[], later: number[], distraction: number[] }, skipped: number }>` — used by both adapters. A decision counts toward `skipped` only if its post-threshold category is not `review` AND the tab is stale (missing from a fresh `api.tabs.query({ windowId })`, or its `url` no longer matches). Decisions whose post-threshold category is `review` are neither grouped nor skipped.
 
 - [ ] **Step 1: Write the failing test**
@@ -135,7 +149,7 @@ git commit -m "Add shared adapter capture/partition helpers"
 
 **Interfaces:**
 - Consumes: `captureTabs`, `partitionByCategory` from `extension/adapters/shared.js` (Task 1); `GROUPS` from `extension/core.js` (existing: `{ focus: { label, color, description }, later: {...}, distraction: {...}, review: {...} }`).
-- Produces: `captureTabs` (re-exported), `applyResult(decisions, threshold, windowId, api) -> Promise<{ grouped: number, skipped: number }>` — consumed by `background.js` (Task 4) and the dashboard (Task 6).
+- Produces: `captureTabs` (re-exported), `applyResult(decisions, threshold, windowId, api) -> Promise<{ grouped: number, skipped: number }>` — consumed by the dashboard (Task 6).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -238,7 +252,7 @@ git commit -m "Add Chrome adapter, remove browser.js stub"
 
 ---
 
-## Task 3: Safari adapter
+## Task 3: Safari adapter — original window-moving design (superseded)
 
 **Files:**
 - Create: `extension/adapters/safari.js`
@@ -246,7 +260,7 @@ git commit -m "Add Chrome adapter, remove browser.js stub"
 
 **Interfaces:**
 - Consumes: `captureTabs`, `partitionByCategory` from `extension/adapters/shared.js` (Task 1).
-- Produces: `captureTabs` (re-exported), `applyResult(decisions, threshold, windowId, api) -> Promise<{ grouped: number, skipped: number }>` — same signature as the Chrome adapter, consumed by `background.js` (Task 4) and the dashboard (Task 6).
+- Produces: `captureTabs` (re-exported), `applyResult(decisions, threshold, windowId, api) -> Promise<{ grouped: number, skipped: number }>` — same signature as the Chrome adapter, consumed by the dashboard (Task 6).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -363,10 +377,9 @@ git commit -m "Add Safari adapter using per-category windows"
 - Modify: `package.json` (`check` script)
 
 **Interfaces:**
-- Consumes: `chrome.js`/`safari.js`'s `captureTabs`/`applyResult` (Tasks 2–3, same signatures).
-- Produces: `api` (default browser namespace, from `extension/api.js`) — consumed by `app.js` (Task 6). `sessionStore(browserApi) -> StorageArea` helper — consumed by `app.js` (Task 6) for API key persistence.
+- Produces: `api` (default browser namespace, from `extension/api.js`) — consumed by `dashboard.js` and `app.js` (Tasks 6–7). `sessionStore(browserApi) -> StorageArea` helper — consumed by `app.js` (Task 6) for API key persistence. `background.js` repeats the one-line namespace pick so Safari can load it without module support.
 
-`api` itself (the `globalThis.browser ?? globalThis.chrome` pick) has no unit test: it reads `globalThis` at import time, and there's nothing meaningful to assert in Node without a real browser global. `sessionStore` is a pure function taking an injected `browserApi`, so it is tested below. `background.js` only wires two one-line calls to real extension APIs unavailable outside a browser — verified by `node --check` (syntax) and manual load in each browser (Task 9).
+`api` itself (the `globalThis.browser ?? globalThis.chrome` pick) has no unit test: it reads `globalThis` at import time, and there's nothing meaningful to assert in Node without a real browser global. `sessionStore` is a pure function taking an injected `browserApi`, so it is tested below. `background.js` is exercised as a classic script in `tests/background.test.js`, matching Safari's manifest entry.
 
 - [ ] **Step 1: Write the failing test for `sessionStore`**
 
@@ -413,7 +426,7 @@ Expected: PASS (2 tests)
 
 ```js
 // extension/background.js
-import { api } from './api.js';
+const api = globalThis.browser ?? globalThis.chrome;
 
 api.action.onClicked.addListener(() => {
   api.tabs.create({ url: api.runtime.getURL('dashboard.html') });
@@ -445,8 +458,8 @@ api.action.onClicked.addListener(() => {
   "version": "0.1.0",
   "description": "A confidence-aware tab organizer powered by Jev.",
   "permissions": ["tabs", "storage"],
-  "host_permissions": ["https://api.typesafe.ai/*"],
-  "background": { "scripts": ["background.js"], "type": "module" },
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "scripts": ["background.js"] },
   "action": { "default_title": "Tab Tamer" },
   "browser_specific_settings": { "safari": { "strict_min_version": "17.0" } },
   "icons": {}
@@ -787,8 +800,7 @@ git commit -m "Add dashboard logic: sample/live mode, columns, apply"
       <input id="api-key" type="password" autocomplete="off">
 
       <label for="threshold">Confidence threshold: <output id="threshold-value">0.7</output></label>
-      <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.7"
-             oninput="document.getElementById('threshold-value').textContent = this.value">
+      <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.7">
 
       <button id="organize" type="button">Preview</button>
       <button id="apply" type="button" disabled>Apply grouping</button>
@@ -796,18 +808,15 @@ git commit -m "Add dashboard logic: sample/live mode, columns, apply"
     <p id="status" role="status" aria-live="polite"></p>
     <div id="board" aria-live="polite"></div>
   </main>
-  <script type="module" src="app.js"></script>
-  <script type="module">
-    import { api } from './api.js';
-    import { mount } from './app.js';
-    import * as chromeAdapter from './adapters/chrome.js';
-    import * as safariAdapter from './adapters/safari.js';
-    const adapter = api.tabGroups ? chromeAdapter : safariAdapter;
-    mount(document, api, adapter);
-  </script>
+  <script type="module" src="dashboard.js"></script>
 </body>
 </html>
 ```
+
+`dashboard.js` imports the API shim, both adapters, and `mount()`, then chooses
+the adapter by feature detection. Keeping this in an external file satisfies
+Manifest V3's extension-page Content Security Policy, which blocks inline
+scripts.
 
 - [ ] **Step 2: Write the stylesheet**
 
@@ -920,8 +929,8 @@ commit one; generate it locally:
 
 ## Known limitations
 
-- Safari has no API to create native colored tab groups, so applying
-  a result opens one new window per category instead.
+- Safari can capture and preview classifications, but Safari WebExtensions do
+  not support `tabs.move` or tab-group APIs, so applying results is Chrome-only.
 - No CI coverage for actually loading the extension in either browser;
   that step is manual (see above).
 - Live mode is implemented but unverified end-to-end — no API key has
@@ -944,7 +953,8 @@ git commit -m "Add README with Chrome/Safari load instructions"
 - [ ] **Step 1: Run the full test suite**
 
 Run: `npm test`
-Expected: all test files pass — `core.test.js`, `adapters-shared.test.js`, `adapters-chrome.test.js`, `adapters-safari.test.js`, `api.test.js`, `fixtures.test.js`, `app.test.js`.
+Expected: all test files pass, including core, adapter, pipeline, API,
+background, manifest, fixtures, and app coverage.
 
 - [ ] **Step 2: Run the syntax check**
 
@@ -958,7 +968,10 @@ Expected: page renders with visible Mode/Goal/API key/Threshold controls.
 
 - [ ] **Step 4: Document remaining manual verification as a follow-up, not a plan gap**
 
-Loading the unpacked extension in real Chrome and a real Safari (via the Xcode wrapper) to confirm `mount()`, `captureTabs`, and `applyResult` end-to-end is out of scope for this automated pass — flag to the user as the next manual step once they're at a machine where they can do so, per the spec's "Known gaps" section.
+Loading the unpacked extension in real Chrome to confirm apply and in real
+Safari (via the Xcode wrapper) to confirm capture/preview is out of scope for
+this automated pass — flag both as manual follow-ups. Safari apply is
+intentionally unavailable.
 
 - [ ] **Step 5: Final commit if any fixups were needed during verification**
 
