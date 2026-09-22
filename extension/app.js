@@ -105,7 +105,7 @@ export function mount(document, { credentials, tabs: tabAdapter }) {
     }
     applyButton.disabled = !canApply(columns, modeInput.value, tabAdapter.supportsApply, workflowKey);
     if (workflow.supportsApply && modeInput.value === 'live' && tabAdapter.supportsApply === false) {
-      status.textContent = 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
+      status.textContent = tabAdapter.applyUnavailableReason;
     }
   }
 
@@ -143,15 +143,16 @@ export function mount(document, { credentials, tabs: tabAdapter }) {
   }
 
   async function apply() {
-    if (!workflowFor(workflowInput.value).supportsApply) {
-      status.textContent = 'Cleanup Review is preview only. No tabs were changed.';
+    const workflow = workflowFor(workflowInput.value);
+    if (!workflow.supportsApply) {
+      status.textContent = workflow.note;
       applyButton.disabled = true;
       return;
     }
     if (modeInput.value !== 'live' || tabAdapter.supportsApply === false) {
       status.textContent = modeInput.value === 'sample'
         ? 'Sample mode: nothing to apply.'
-        : 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
+        : tabAdapter.applyUnavailableReason;
       applyButton.disabled = true;
       return;
     }
@@ -165,18 +166,21 @@ export function mount(document, { credentials, tabs: tabAdapter }) {
     try {
       const threshold = Number(thresholdInput.value);
       const { grouped, skipped } = await tabAdapter.applyResult(lastDecisions, threshold, lastWindowId);
+      lastDecisions = [];
+      lastWindowId = null;
       status.textContent = `Grouped ${grouped} tab(s), skipped ${skipped} that moved or fell out of range.`;
     } catch (error) {
       status.textContent = error.message;
+      applyButton.disabled = false;
     } finally {
       organizeButton.disabled = false;
-      applyButton.disabled = false;
     }
   }
 
   organizeButton.addEventListener('click', organize);
   applyButton.addEventListener('click', apply);
   modeInput.addEventListener('change', clearPreview);
+  goalInput.addEventListener('input', clearPreview);
   workflowInput.addEventListener('change', () => {
     clearPreview();
     syncWorkflowUi();

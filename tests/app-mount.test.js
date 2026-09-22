@@ -79,6 +79,7 @@ test('cleanup workflow renders five preview columns and cannot mutate tabs', asy
 
   await elements.apply.dispatch('click');
   assert.equal(applyCalls, 0);
+  assert.equal(elements.status.textContent, elements['workflow-note'].textContent);
 });
 
 test('switching workflows clears preview state and restores organizer controls', async () => {
@@ -149,6 +150,8 @@ test('Safari live classification renders while Apply remains unavailable', async
       : [{ id: 1, windowId: 7, title: 'Safari guide', url: 'https://example.com/safari' }] },
   };
   const bindings = createBrowserBindings(safariApi);
+  const unavailableReason = 'This browser can classify tabs, but cannot group them.';
+  bindings.tabs.applyUnavailableReason = unavailableReason;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ answers: {
     tab_1: { type: 'choice', choice: 'focus', confidence: 0.94 },
@@ -160,9 +163,71 @@ test('Safari live classification renders while Apply remains unavailable', async
 
     assert.equal(elements.board.children.length, 4);
     assert.equal(elements.apply.disabled, true);
-    assert.match(elements.status.textContent, /Safari can preview/i);
+    assert.equal(elements.status.textContent, unavailableReason);
     await elements.apply.dispatch('click');
-    assert.match(elements.status.textContent, /Safari can preview/i);
+    assert.equal(elements.status.textContent, unavailableReason);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('editing the goal invalidates a preview before it can be applied', async () => {
+  const { document, elements } = dashboardFixture();
+  elements.mode.value = 'live';
+  elements.goal.value = 'Ship Tab Tamer';
+  elements['api-key'].value = 'test-key';
+  const bindings = browserBindings({
+    captureActiveWindow: async () => ({
+      windowId: 5,
+      tabs: [{ id: 1, windowId: 5, title: 'Current guide', url: 'https://example.com/current' }],
+    }),
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ answers: {
+    tab_1: { type: 'choice', choice: 'focus', confidence: 0.95 },
+  } }), { status: 200 });
+
+  try {
+    mount(document, bindings);
+    await elements.organize.dispatch('click');
+    assert.equal(elements.apply.disabled, false);
+
+    elements.goal.value = 'Plan a different project';
+    await elements.goal.dispatch('input');
+
+    assert.equal(elements.board.children.length, 0);
+    assert.equal(elements.apply.disabled, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a successful apply consumes the preview instead of enabling duplicate grouping', async () => {
+  const { document, elements } = dashboardFixture();
+  elements.mode.value = 'live';
+  elements.goal.value = 'Ship Tab Tamer';
+  elements['api-key'].value = 'test-key';
+  let applyCalls = 0;
+  const bindings = browserBindings({
+    captureActiveWindow: async () => ({
+      windowId: 5,
+      tabs: [{ id: 1, windowId: 5, title: 'Current guide', url: 'https://example.com/current' }],
+    }),
+    applyResult: async () => { applyCalls += 1; return { grouped: 1, skipped: 0 }; },
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ answers: {
+    tab_1: { type: 'choice', choice: 'focus', confidence: 0.95 },
+  } }), { status: 200 });
+
+  try {
+    mount(document, bindings);
+    await elements.organize.dispatch('click');
+    await elements.apply.dispatch('click');
+
+    assert.equal(applyCalls, 1);
+    assert.equal(elements.apply.disabled, true);
+    assert.match(elements.status.textContent, /Grouped 1 tab/);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -44,6 +44,7 @@ test('reports Safari apply as unsupported instead of calling tabs.move', async (
   const adapter = createSafariTabAdapter(api);
 
   assert.equal(adapter.supportsApply, false);
+  assert.match(adapter.applyUnavailableReason, /Safari.*move or group tabs/i);
   await assert.rejects(adapter.applyResult(decisions, 0.8, 5), /Safari.*move or group tabs/i);
   assert.equal(windows.length, 0);
   assert.equal(moves.length, 0);
