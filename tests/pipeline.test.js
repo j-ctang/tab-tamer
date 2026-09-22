@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sanitizeTabs, classify } from '../extension/core.js';
+import { columnsFor } from '../extension/app.js';
 import { applyResult as chromeApplyResult } from '../extension/adapters/chrome.js';
 
 // Full pipeline: raw (unsanitized) tabs -> sanitizeTabs -> classify (fake fetcher)
@@ -47,4 +48,32 @@ test('chrome adapter: query-string/fragment tabs that did not actually change ar
   assert.equal(result.skipped, 0);
   assert.equal(result.grouped, 2);
   assert.deepEqual(groupCalls.flat().sort(), [1, 2]);
+});
+
+test('cleanup pipeline sends sanitized tabs and returns preview columns without an adapter', async () => {
+  const cleanupRawTabs = [
+    { id: 20, windowId: 5, title: 'Current guide', url: 'https://user:secret@example.com/current?token=private#part' },
+    { id: 21, windowId: 5, title: 'Old guide', url: 'https://example.com/old?secret=yes' },
+    { id: 22, windowId: 5, title: 'Pinned', url: 'https://example.com/pinned', pinned: true },
+  ];
+  const tabs = sanitizeTabs(cleanupRawTabs);
+  let requestBody;
+  const fetcher = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    return new Response(JSON.stringify({ answers: {
+      tab_20: { type: 'choice', choice: 'keep', confidence: 0.91 },
+      tab_21: { type: 'choice', choice: 'stale', confidence: 0.84 },
+    } }), { status: 200 });
+  };
+
+  const { decisions } = await classify(tabs, 'Use current documentation', 'fake-key', fetcher, 'cleanup');
+  const columns = columnsFor(decisions, 0.7, 'cleanup');
+
+  assert.deepEqual(requestBody.state.tabs, [
+    { id: 20, title: 'Current guide', url: 'https://example.com/current' },
+    { id: 21, title: 'Old guide', url: 'https://example.com/old' },
+  ]);
+  assert.equal(columns.keep.length, 1);
+  assert.equal(columns.stale.length, 1);
+  assert.equal(Object.values(columns).flat().length, 2);
 });

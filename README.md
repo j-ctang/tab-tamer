@@ -13,6 +13,16 @@ with a confidence slider controlling how much goes to manual review.
   dashboard and stored in `storage.session` (falls back to
   `storage.local` on Safari versions that lack `storage.session`).
 
+## Cleanup Review
+
+Choose **Cleanup review** to classify open tabs as Keep, Likely finished,
+Redundant, Stale / irrelevant, or Your call relative to a prompt. Sample mode
+works without a network request; live mode requires a TypeSafe API key.
+
+Cleanup Review is preview-only. It does not move, group, or close tabs. Chrome
+is the primary validation target; Safari exposes the same preview where its
+website permissions allow tab capture.
+
 ## Development
 
     npm test      # run unit tests (node --test)

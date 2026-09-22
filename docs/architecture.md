@@ -5,6 +5,10 @@ metadata into confidence-aware decisions. Jev supplies typed classifications;
 ordinary extension code validates the response, applies confidence thresholds,
 renders previews, and controls every browser mutation.
 
+The decision layer supports multiple typed workflows: the goal organizer and a
+preview-only Cleanup Review workflow share transport, validation, confidence,
+and rendering infrastructure.
+
 ## Browser support
 
 | Capability | Chrome | Safari |
