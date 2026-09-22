@@ -59,6 +59,7 @@ export function mount(document, api, adapter) {
   const board = document.getElementById('board');
   let lastDecisions = [];
   let lastWindowId = null;
+  let previewGeneration = 0;
   const store = sessionStore(api);
 
   form.addEventListener('submit', (event) => event.preventDefault());
@@ -71,10 +72,12 @@ export function mount(document, api, adapter) {
   });
 
   function clearPreview() {
+    previewGeneration += 1;
     lastDecisions = [];
     lastWindowId = null;
     board.innerHTML = '';
     status.textContent = '';
+    organizeButton.disabled = false;
     applyButton.disabled = true;
   }
 
@@ -115,6 +118,7 @@ export function mount(document, api, adapter) {
   }
 
   async function organize() {
+    const generation = ++previewGeneration;
     status.textContent = '';
     organizeButton.disabled = true;
     applyButton.disabled = true;
@@ -137,12 +141,13 @@ export function mount(document, api, adapter) {
       const { decisions, columns } = await runLiveMode({
         tabs, goal: goalInput.value, apiKey: apiKeyInput.value, threshold, workflowKey,
       });
+      if (generation !== previewGeneration) return;
       lastDecisions = decisions;
       render(columns);
     } catch (error) {
-      status.textContent = error.message;
+      if (generation === previewGeneration) status.textContent = error.message;
     } finally {
-      organizeButton.disabled = false;
+      if (generation === previewGeneration) organizeButton.disabled = false;
     }
   }
 

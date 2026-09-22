@@ -87,3 +87,44 @@ test('switching workflows clears preview state and restores organizer controls',
   assert.equal(elements.apply.hidden, false);
   assert.equal(elements['workflow-note'].hidden, true);
 });
+
+test('workflow changes invalidate a pending live preview', async () => {
+  const { document, elements } = dashboardFixture();
+  elements.mode.value = 'live';
+  elements.goal.value = 'Ship Tab Tamer';
+  elements['api-key'].value = 'test-key';
+  const api = {
+    storage: { session: { get: async () => ({}), set: async () => {} } },
+    tabs: { query: async () => [{ windowId: 5 }] },
+  };
+  const adapter = {
+    supportsApply: true,
+    captureTabs: async () => [{ id: 1, windowId: 5, title: 'Current guide', url: 'https://example.com/current' }],
+    applyResult: async () => ({ grouped: 1, skipped: 0 }),
+  };
+  const originalFetch = globalThis.fetch;
+  let resolveFetch;
+  globalThis.fetch = () => new Promise(resolve => { resolveFetch = resolve; });
+
+  try {
+    mount(document, api, adapter);
+    const pendingPreview = elements.organize.dispatch('click');
+    while (!resolveFetch) await Promise.resolve();
+
+    elements.workflow.value = 'cleanup';
+    await elements.workflow.dispatch('change');
+    elements.workflow.value = 'organize';
+    await elements.workflow.dispatch('change');
+
+    resolveFetch(new Response(JSON.stringify({ answers: {
+      tab_1: { type: 'choice', choice: 'focus', confidence: 0.95 },
+    } }), { status: 200 }));
+    await pendingPreview;
+
+    assert.equal(elements.board.children.length, 0);
+    assert.equal(elements.apply.disabled, true);
+    assert.equal(elements.status.textContent, '');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
