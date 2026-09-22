@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mount } from '../extension/app.js';
+import { createBrowserBindings } from '../extension/api.js';
 
 class FakeElement {
   constructor(id = '') {
@@ -45,17 +46,27 @@ function dashboardFixture() {
   };
 }
 
+function browserBindings(tabs = {}) {
+  return {
+    credentials: { load: async () => '', save: async () => {} },
+    tabs: {
+      supportsApply: true,
+      captureActiveWindow: async () => ({ windowId: 1, tabs: [] }),
+      applyResult: async () => ({ grouped: 0, skipped: 0 }),
+      ...tabs,
+    },
+  };
+}
+
 test('cleanup workflow renders five preview columns and cannot mutate tabs', async () => {
   const { document, elements } = dashboardFixture();
   let applyCalls = 0;
-  const api = { storage: { session: { get: async () => ({}), set: async () => {} } } };
-  const adapter = {
+  const bindings = browserBindings({
     supportsApply: true,
-    captureTabs: async () => [],
     applyResult: async () => { applyCalls += 1; return { grouped: 0, skipped: 0 }; },
-  };
+  });
 
-  mount(document, api, adapter);
+  mount(document, bindings);
   elements.workflow.value = 'cleanup';
   await elements.workflow.dispatch('change');
   assert.equal(elements.apply.hidden, true);
@@ -72,9 +83,7 @@ test('cleanup workflow renders five preview columns and cannot mutate tabs', asy
 
 test('switching workflows clears preview state and restores organizer controls', async () => {
   const { document, elements } = dashboardFixture();
-  const api = { storage: { session: { get: async () => ({}), set: async () => {} } } };
-  const adapter = { supportsApply: true, captureTabs: async () => [], applyResult: async () => ({ grouped: 0, skipped: 0 }) };
-  mount(document, api, adapter);
+  mount(document, browserBindings());
 
   elements.workflow.value = 'cleanup';
   await elements.workflow.dispatch('change');
@@ -93,21 +102,20 @@ test('workflow changes invalidate a pending live preview', async () => {
   elements.mode.value = 'live';
   elements.goal.value = 'Ship Tab Tamer';
   elements['api-key'].value = 'test-key';
-  const api = {
-    storage: { session: { get: async () => ({}), set: async () => {} } },
-    tabs: { query: async () => [{ windowId: 5 }] },
-  };
-  const adapter = {
+  const bindings = browserBindings({
     supportsApply: true,
-    captureTabs: async () => [{ id: 1, windowId: 5, title: 'Current guide', url: 'https://example.com/current' }],
+    captureActiveWindow: async () => ({
+      windowId: 5,
+      tabs: [{ id: 1, windowId: 5, title: 'Current guide', url: 'https://example.com/current' }],
+    }),
     applyResult: async () => ({ grouped: 1, skipped: 0 }),
-  };
+  });
   const originalFetch = globalThis.fetch;
   let resolveFetch;
   globalThis.fetch = () => new Promise(resolve => { resolveFetch = resolve; });
 
   try {
-    mount(document, api, adapter);
+    mount(document, bindings);
     const pendingPreview = elements.organize.dispatch('click');
     while (!resolveFetch) await Promise.resolve();
 
@@ -124,6 +132,37 @@ test('workflow changes invalidate a pending live preview', async () => {
     assert.equal(elements.board.children.length, 0);
     assert.equal(elements.apply.disabled, true);
     assert.equal(elements.status.textContent, '');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Safari live classification renders while Apply remains unavailable', async () => {
+  const { document, elements } = dashboardFixture();
+  elements.mode.value = 'live';
+  elements.goal.value = 'Ship Tab Tamer';
+  elements['api-key'].value = 'test-key';
+  const safariApi = {
+    storage: { session: { get: async () => ({}), set: async () => {} } },
+    tabs: { query: async options => options.active
+      ? [{ id: 99, windowId: 7 }]
+      : [{ id: 1, windowId: 7, title: 'Safari guide', url: 'https://example.com/safari' }] },
+  };
+  const bindings = createBrowserBindings(safariApi);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ answers: {
+    tab_1: { type: 'choice', choice: 'focus', confidence: 0.94 },
+  } }), { status: 200 });
+
+  try {
+    mount(document, bindings);
+    await elements.organize.dispatch('click');
+
+    assert.equal(elements.board.children.length, 4);
+    assert.equal(elements.apply.disabled, true);
+    assert.match(elements.status.textContent, /Safari can preview/i);
+    await elements.apply.dispatch('click');
+    assert.match(elements.status.textContent, /Safari can preview/i);
   } finally {
     globalThis.fetch = originalFetch;
   }

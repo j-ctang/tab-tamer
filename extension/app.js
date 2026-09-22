@@ -1,8 +1,5 @@
 import { classify, categoryFor, sanitizeTabs, validatePrompt, workflowFor } from './core.js';
 import { SAMPLE_WORKFLOWS } from './fixtures.js';
-import { sessionStore } from './api.js';
-
-const API_KEY_STORAGE_KEY = 'tabTamerApiKey';
 
 export function columnsFor(decisions, threshold, workflowKey = 'organize') {
   const workflow = workflowFor(workflowKey);
@@ -43,7 +40,7 @@ export async function runLiveMode({
   return { decisions, columns: columnsFor(decisions, threshold, workflowKey), model, elapsed };
 }
 
-export function mount(document, api, adapter) {
+export function mount(document, { credentials, tabs: tabAdapter }) {
   const form = document.getElementById('controls');
   const workflowInput = document.getElementById('workflow');
   const goalLabel = document.getElementById('goal-label');
@@ -60,15 +57,14 @@ export function mount(document, api, adapter) {
   let lastDecisions = [];
   let lastWindowId = null;
   let previewGeneration = 0;
-  const store = sessionStore(api);
 
   form.addEventListener('submit', (event) => event.preventDefault());
 
-  store.get(API_KEY_STORAGE_KEY).then(saved => {
-    if (saved[API_KEY_STORAGE_KEY]) apiKeyInput.value = saved[API_KEY_STORAGE_KEY];
+  credentials.load().then(saved => {
+    if (saved) apiKeyInput.value = saved;
   });
   apiKeyInput.addEventListener('change', () => {
-    store.set({ [API_KEY_STORAGE_KEY]: apiKeyInput.value });
+    credentials.save(apiKeyInput.value);
   });
 
   function clearPreview() {
@@ -107,8 +103,8 @@ export function mount(document, api, adapter) {
       }
       board.appendChild(column);
     }
-    applyButton.disabled = !canApply(columns, modeInput.value, adapter.supportsApply, workflowKey);
-    if (workflow.supportsApply && modeInput.value === 'live' && adapter.supportsApply === false) {
+    applyButton.disabled = !canApply(columns, modeInput.value, tabAdapter.supportsApply, workflowKey);
+    if (workflow.supportsApply && modeInput.value === 'live' && tabAdapter.supportsApply === false) {
       status.textContent = 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
     }
   }
@@ -130,9 +126,8 @@ export function mount(document, api, adapter) {
       }
       const { ok, error } = validateGoal(goalInput.value, workflowKey);
       if (!ok) { status.textContent = error; return; }
-      const [currentTab] = await api.tabs.query({ active: true, currentWindow: true });
-      lastWindowId = currentTab.windowId;
-      const rawTabs = await adapter.captureTabs(api, lastWindowId);
+      const { windowId, tabs: rawTabs } = await tabAdapter.captureActiveWindow();
+      lastWindowId = windowId;
       const tabs = sanitizeTabs(rawTabs);
       const { decisions, columns } = await runLiveMode({
         tabs, goal: goalInput.value, apiKey: apiKeyInput.value, threshold, workflowKey,
@@ -153,7 +148,7 @@ export function mount(document, api, adapter) {
       applyButton.disabled = true;
       return;
     }
-    if (modeInput.value !== 'live' || adapter.supportsApply === false) {
+    if (modeInput.value !== 'live' || tabAdapter.supportsApply === false) {
       status.textContent = modeInput.value === 'sample'
         ? 'Sample mode: nothing to apply.'
         : 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
@@ -169,7 +164,7 @@ export function mount(document, api, adapter) {
     applyButton.disabled = true;
     try {
       const threshold = Number(thresholdInput.value);
-      const { grouped, skipped } = await adapter.applyResult(lastDecisions, threshold, lastWindowId, api);
+      const { grouped, skipped } = await tabAdapter.applyResult(lastDecisions, threshold, lastWindowId);
       status.textContent = `Grouped ${grouped} tab(s), skipped ${skipped} that moved or fell out of range.`;
     } catch (error) {
       status.textContent = error.message;

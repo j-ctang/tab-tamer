@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyResult } from '../extension/adapters/chrome.js';
+import * as chromeAdapter from '../extension/adapters/chrome.js';
+
+const { createChromeTabAdapter } = chromeAdapter;
 
 const decisions = [
   { id: 1, windowId: 5, url: 'https://a.com/', title: 'A', category: 'focus', confidence: 0.95 },
@@ -22,7 +24,9 @@ test('groups eligible fresh tabs by category and labels the group', async () => 
     },
     tabGroups: { update: async (groupId, props) => { updateCalls.push([groupId, props]); } },
   };
-  const result = await applyResult(decisions, 0.8, 5, api);
+  const adapter = createChromeTabAdapter(api);
+  const result = await adapter.applyResult(decisions, 0.8, 5);
+  assert.equal(adapter.supportsApply, true);
   assert.deepEqual(groupCalls, [[1]]);
   assert.deepEqual(updateCalls, [[20, { title: 'Focus now', color: 'green' }]]);
   assert.equal(result.grouped, 1);
@@ -35,7 +39,7 @@ test('an all-review result never calls tabs.group', async () => {
     tabs: { query: async () => decisions.map(({ id, url }) => ({ id, url })), group: async () => { called = true; } },
     tabGroups: { update: async () => {} },
   };
-  const result = await applyResult(decisions, 1, 5, api);
+  const result = await createChromeTabAdapter(api).applyResult(decisions, 1, 5);
   assert.equal(called, false);
   assert.equal(result.grouped, 0);
 });

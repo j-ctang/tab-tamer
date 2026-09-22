@@ -1,8 +1,15 @@
-import { captureTabs } from './shared.js';
+import { createTabOperations } from './shared.js';
 
-export { captureTabs };
-export const supportsApply = false;
+const supportsApply = false;
 
-export async function applyResult() {
+export function createSafariTabAdapter(api) {
+  return {
+    supportsApply,
+    captureActiveWindow: createTabOperations(api).captureActiveWindow,
+    applyResult: unsupportedApply,
+  };
+}
+
+async function unsupportedApply() {
   throw new Error('Safari WebExtensions cannot move or group tabs. Preview is available, but apply is Chrome-only.');
 }

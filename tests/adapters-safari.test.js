@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyResult, supportsApply } from '../extension/adapters/safari.js';
+import * as safariAdapter from '../extension/adapters/safari.js';
+
+const { createSafariTabAdapter } = safariAdapter;
 
 const decisions = [
   { id: 1, windowId: 5, url: 'https://a.com/', title: 'A', category: 'focus', confidence: 0.95 },
@@ -39,9 +41,10 @@ function fakeApi(queryResult) {
 
 test('reports Safari apply as unsupported instead of calling tabs.move', async () => {
   const { api, windows, moves } = fakeApi(decisions.map(({ id, url }) => ({ id, url })));
+  const adapter = createSafariTabAdapter(api);
 
-  assert.equal(supportsApply, false);
-  await assert.rejects(applyResult(decisions, 0.8, 5, api), /Safari.*move or group tabs/i);
+  assert.equal(adapter.supportsApply, false);
+  await assert.rejects(adapter.applyResult(decisions, 0.8, 5), /Safari.*move or group tabs/i);
   assert.equal(windows.length, 0);
   assert.equal(moves.length, 0);
 });

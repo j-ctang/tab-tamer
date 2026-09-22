@@ -1,10 +1,23 @@
 import { GROUPS, categoryFor, sanitizeTabs } from '../core.js';
 
-export async function captureTabs(api, windowId) {
+async function captureTabs(api, windowId) {
   return api.tabs.query({ windowId });
 }
 
-export async function partitionByCategory(decisions, threshold, windowId, api) {
+export function createTabOperations(api) {
+  return {
+    async captureActiveWindow() {
+      const [currentTab] = await api.tabs.query({ active: true, currentWindow: true });
+      const windowId = currentTab.windowId;
+      return { windowId, tabs: await captureTabs(api, windowId) };
+    },
+    partitionByCategory(decisions, threshold, windowId) {
+      return partitionByCategory(decisions, threshold, windowId, api);
+    },
+  };
+}
+
+async function partitionByCategory(decisions, threshold, windowId, api) {
   const current = await api.tabs.query({ windowId });
   const currentById = new Map(current.map(tab => [tab.id, tab]));
   const byCategory = Object.fromEntries(

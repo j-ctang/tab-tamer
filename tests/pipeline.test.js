@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sanitizeTabs, classify } from '../extension/core.js';
 import { columnsFor } from '../extension/app.js';
-import { applyResult as chromeApplyResult } from '../extension/adapters/chrome.js';
+import { createChromeTabAdapter } from '../extension/adapters/chrome.js';
 
 // Full pipeline: raw (unsanitized) tabs -> sanitizeTabs -> classify (fake fetcher)
 // -> adapter.applyResult (fake browser api). A tab whose raw URL carries a
@@ -44,7 +44,7 @@ test('chrome adapter: query-string/fragment tabs that did not actually change ar
     },
     tabGroups: { update: async (groupId, props) => { updateCalls.push([groupId, props]); } },
   };
-  const result = await chromeApplyResult(decisions, 0.8, 5, api);
+  const result = await createChromeTabAdapter(api).applyResult(decisions, 0.8, 5);
   assert.equal(result.skipped, 0);
   assert.equal(result.grouped, 2);
   assert.deepEqual(groupCalls.flat().sort(), [1, 2]);
