@@ -21,8 +21,9 @@ extension/
     chrome.js              # captureTabs(), applyResult() via chrome.tabGroups
     safari.js               # captureTabs(), applyResult() via 4 new windows
   api.js                    # globalThis.browser ?? globalThis.chrome, thin shim only (no dependency)
-  background.js             # picks adapter by runtime feature detection
+  background.js             # opens the dashboard page only
   app.js                     # dashboard UI logic, unchanged concept
+  dashboard.js               # picks adapter by runtime feature detection, mounts app.js
   dashboard.html/css
   manifest.chrome.json
   manifest.safari.json
@@ -35,7 +36,7 @@ tests/
 
 ### Adapter interface
 
-Both adapters implement the same two functions, so `background.js` and
+Both adapters implement the same two functions, so `dashboard.js` and
 tests never branch on browser identity directly:
 
 ```js
@@ -68,7 +69,12 @@ No tab-group API available. Applies result by:
 
 This is a real UX difference from Chrome (separate windows vs. inline
 colored groups) — approved as the only option given Safari's API
-surface.
+surface. The per-category windows are also not labeled by category:
+Safari extensions have no native window-title API, so there is no way
+to set a window's title/label the way Chrome's `tabGroups.update`
+titles a group. This is an accepted deviation from an earlier draft
+of this spec, not an oversight — do not attempt to implement window
+labeling for Safari.
 
 ### Cross-browser shim (`api.js`)
 

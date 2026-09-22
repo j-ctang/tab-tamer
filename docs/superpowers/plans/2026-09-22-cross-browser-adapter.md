@@ -4,7 +4,7 @@
 
 **Goal:** Replace the Chrome-only `browser.js` stub with a shared adapter interface implemented for both Chrome (`chrome.tabGroups`) and Safari (per-category windows), plus the dashboard UI and packaging needed to run Tab Tamer on both browsers.
 
-**Architecture:** `core.js` (pure decision logic) stays unchanged and browser-agnostic. A new `adapters/shared.js` holds the browser-agnostic parts of tab capture and staleness/threshold partitioning; `adapters/chrome.js` and `adapters/safari.js` each add only the browser-specific "apply result" step. `background.js` picks an adapter at runtime by feature-detecting `api.tabGroups`, and opens the dashboard page. `app.js` drives the dashboard: sample mode (fixture data, no network) and live mode (`core.classify` + adapter `applyResult`).
+**Architecture:** `core.js` (pure decision logic) stays unchanged and browser-agnostic. A new `adapters/shared.js` holds the browser-agnostic parts of tab capture and staleness/threshold partitioning; `adapters/chrome.js` and `adapters/safari.js` each add only the browser-specific "apply result" step. `background.js` only opens the dashboard page; `dashboard.js` (the dashboard's bootstrap module) picks an adapter at runtime by feature-detecting `api.tabGroups` and mounts `app.js`. `app.js` drives the dashboard: sample mode (fixture data, no network) and live mode (`core.classify` + adapter `applyResult`).
 
 **Tech Stack:** Vanilla JS (ESM), no bundler, no external dependencies. Node built-in test runner (`node --test`) for unit tests. Two static Manifest V3 JSON files, one per browser.
 

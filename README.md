@@ -17,14 +17,20 @@ with a confidence slider controlling how much goes to manual review.
 
     npm test      # run unit tests (node --test)
     npm run check # syntax-check all extension source files
-    npm run preview # serve the dashboard statically for UI iteration (sample mode only)
+    npm run preview # serve the dashboard statically for layout/styling iteration only
+
+The preview server is for iterating on layout and styling only. Outside
+a real extension context `api` (from `api.js`) is `undefined`, so
+nothing functional works there — not even sample mode. Functional
+testing, including sample mode, requires loading the actual extension
+in a browser (see below).
 
 ## Loading in Chrome
 
-1. Open `chrome://extensions`, enable Developer mode.
-2. "Load unpacked" → select the `extension/` folder.
-3. Chrome uses `manifest.chrome.json`; rename or symlink it to
+1. Chrome uses `manifest.chrome.json`; rename or symlink it to
    `manifest.json` before loading (Chrome expects that exact filename).
+2. Open `chrome://extensions`, enable Developer mode.
+3. "Load unpacked" → select the `extension/` folder.
 
 ## Loading in Safari (macOS)
 
@@ -49,3 +55,5 @@ commit one; generate it locally:
   that step is manual (see above).
 - Live mode is implemented but unverified end-to-end — no API key has
   been tested against it yet.
+- Live mode is capped at 40 tabs per request; if you have more open,
+  close some or wait for a future update.
