@@ -1,4 +1,4 @@
-import { categoryFor, sanitizeTabs } from '../core.js';
+import { GROUPS, categoryFor, sanitizeTabs } from '../core.js';
 
 export async function captureTabs(api, windowId) {
   return api.tabs.query({ windowId });
@@ -7,7 +7,9 @@ export async function captureTabs(api, windowId) {
 export async function partitionByCategory(decisions, threshold, windowId, api) {
   const current = await api.tabs.query({ windowId });
   const currentById = new Map(current.map(tab => [tab.id, tab]));
-  const byCategory = { focus: [], later: [], distraction: [] };
+  const byCategory = Object.fromEntries(
+    Object.keys(GROUPS).filter(category => category !== 'review').map(category => [category, []]),
+  );
   let skipped = 0;
   for (const decision of decisions) {
     const category = categoryFor(decision, threshold);

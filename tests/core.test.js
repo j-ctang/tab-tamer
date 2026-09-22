@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as core from '../extension/core.js';
 const {
   GROUPS, WORKFLOWS, workflowFor, sanitizeTabs, buildRequest,
-  readDecisions, categoryFor, classify,
+  validatePrompt, readDecisions, categoryFor, classify,
 } = core;
 const tabs = [{id:7,title:'React guide',url:'https://docs.example.com/react',windowId:2}];
 test('eligible tabs exclude private/pinned/internal tabs and strip URL secrets', () => {
@@ -21,6 +21,11 @@ test('request ties each question to a tab and includes the user goal',()=>{
  assert.deepEqual(Object.keys(body.questions.tab_7.criteria),['focus','later','distraction','review']);
  assert.throws(()=>buildRequest(tabs,'   '),/goal/i);
  assert.throws(()=>buildRequest(Array.from({length:41},(_,id)=>({...tabs[0],id})), 'goal'),/40/);
+});
+test('prompt validation is independent of tabs and sample fixtures', () => {
+ assert.equal(validatePrompt('  Ship Tab Tamer  '), 'Ship Tab Tamer');
+ assert.throws(() => validatePrompt('   '), /goal/i);
+ assert.throws(() => validatePrompt('x'.repeat(501)), /500/);
 });
 test('missing or invalid answers always go to review instead of disappearing',()=>{
  const result=readDecisions([...tabs,{id:8},{id:9},{id:10}],{answers:{

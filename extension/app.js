@@ -1,4 +1,4 @@
-import { buildRequest, classify, categoryFor, sanitizeTabs, workflowFor } from './core.js';
+import { classify, categoryFor, sanitizeTabs, validatePrompt, workflowFor } from './core.js';
 import { SAMPLE_WORKFLOWS } from './fixtures.js';
 import { sessionStore } from './api.js';
 
@@ -15,8 +15,8 @@ export function columnsFor(decisions, threshold, workflowKey = 'organize') {
 
 export function validateGoal(goal, workflowKey = 'organize') {
   try {
-    const { tabs } = SAMPLE_WORKFLOWS[workflowKey];
-    buildRequest(tabs.slice(0, 1), goal, workflowKey);
+    workflowFor(workflowKey);
+    validatePrompt(goal);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error.message };
@@ -82,17 +82,13 @@ export function mount(document, api, adapter) {
   }
 
   function syncWorkflowUi() {
-    const cleanup = workflowInput.value === 'cleanup';
-    goalLabel.textContent = cleanup ? 'Cleanup prompt' : 'Goal';
-    goalInput.placeholder = cleanup
-      ? 'What are these tabs meant to support?'
-      : 'What are you trying to get done?';
-    organizeButton.textContent = cleanup ? 'Analyze tabs' : 'Preview';
-    applyButton.hidden = cleanup;
-    workflowNote.hidden = !cleanup;
-    workflowNote.textContent = cleanup
-      ? 'Cleanup Review is preview only. No tabs will be moved, grouped, or closed.'
-      : '';
+    const workflow = workflowFor(workflowInput.value);
+    goalLabel.textContent = workflow.promptLabel;
+    goalInput.placeholder = workflow.promptPlaceholder;
+    organizeButton.textContent = workflow.previewLabel;
+    applyButton.hidden = !workflow.supportsApply;
+    workflowNote.hidden = !workflow.note;
+    workflowNote.textContent = workflow.note;
   }
 
   function render(columns) {
@@ -112,7 +108,7 @@ export function mount(document, api, adapter) {
       board.appendChild(column);
     }
     applyButton.disabled = !canApply(columns, modeInput.value, adapter.supportsApply, workflowKey);
-    if (workflowKey === 'organize' && modeInput.value === 'live' && adapter.supportsApply === false) {
+    if (workflow.supportsApply && modeInput.value === 'live' && adapter.supportsApply === false) {
       status.textContent = 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
     }
   }
@@ -152,7 +148,7 @@ export function mount(document, api, adapter) {
   }
 
   async function apply() {
-    if (workflowInput.value !== 'organize') {
+    if (!workflowFor(workflowInput.value).supportsApply) {
       status.textContent = 'Cleanup Review is preview only. No tabs were changed.';
       applyButton.disabled = true;
       return;
