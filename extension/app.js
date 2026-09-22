@@ -1,4 +1,4 @@
-import { GROUPS, buildRequest, classify, categoryFor } from './core.js';
+import { GROUPS, buildRequest, classify, categoryFor, sanitizeTabs } from './core.js';
 import { SAMPLE_TABS, SAMPLE_DECISIONS } from './fixtures.js';
 import { sessionStore } from './api.js';
 
@@ -82,8 +82,9 @@ export function mount(document, api, adapter) {
       const [currentTab] = await api.tabs.query({ active: true, currentWindow: true });
       lastWindowId = currentTab.windowId;
       const rawTabs = await adapter.captureTabs(api, lastWindowId);
+      const tabs = sanitizeTabs(rawTabs);
       const { columns } = await runLiveMode({
-        tabs: rawTabs, goal: goalInput.value, apiKey: apiKeyInput.value, threshold,
+        tabs, goal: goalInput.value, apiKey: apiKeyInput.value, threshold,
       });
       lastDecisions = [].concat(...Object.values(columns));
       render(columns);
