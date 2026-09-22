@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tab Tamer</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <main>
+    <h1>Tab Tamer</h1>
+    <form id="controls" onsubmit="return false">
+      <label for="mode">Mode</label>
+      <select id="mode">
+        <option value="sample">Sample (no network)</option>
+        <option value="live">Live (uses Jev)</option>
+      </select>
+
+      <label for="goal">Goal</label>
+      <textarea id="goal" maxlength="500" placeholder="What are you trying to get done?"></textarea>
+
+      <label for="api-key">TypeSafe API key</label>
+      <input id="api-key" type="password" autocomplete="off">
+
+      <label for="threshold">Confidence threshold: <output id="threshold-value">0.7</output></label>
+      <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.7"
+             oninput="document.getElementById('threshold-value').textContent = this.value">
+
+      <button id="organize" type="button">Preview</button>
+      <button id="apply" type="button" disabled>Apply grouping</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <div id="board" aria-live="polite"></div>
+  </main>
+  <script type="module" src="app.js"></script>
+  <script type="module">
+    import { api } from './api.js';
+    import { mount } from './app.js';
+    import * as chromeAdapter from './adapters/chrome.js';
+    import * as safariAdapter from './adapters/safari.js';
+    const adapter = api.tabGroups ? chromeAdapter : safariAdapter;
+    mount(document, api, adapter);
+  </script>
+</body>
+</html>
