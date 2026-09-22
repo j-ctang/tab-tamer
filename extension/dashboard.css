@@ -4,7 +4,8 @@ h1 { font-size: 1.25rem; margin: 0 0 1rem; }
 #controls label { font-weight: 600; font-size: 0.85rem; }
 #controls textarea, #controls input, #controls select { font: inherit; padding: 0.4rem; }
 #controls button { margin-top: 0.5rem; padding: 0.5rem 1rem; }
-#board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+#board { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; }
+#workflow-note { color: #555; font-size: 0.9rem; }
 .column { border: 1px solid #ddd; border-radius: 0.5rem; padding: 0.75rem; min-height: 4rem; }
 .column h2 { font-size: 0.9rem; margin: 0 0 0.5rem; }
 .tab-item { font-size: 0.85rem; padding: 0.25rem 0; border-bottom: 1px solid #eee; }

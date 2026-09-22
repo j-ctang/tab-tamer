@@ -1,4 +1,4 @@
-import { GROUPS, buildRequest, classify, categoryFor, sanitizeTabs, workflowFor } from './core.js';
+import { buildRequest, classify, categoryFor, sanitizeTabs, workflowFor } from './core.js';
 import { SAMPLE_WORKFLOWS } from './fixtures.js';
 import { sessionStore } from './api.js';
 
@@ -45,6 +45,8 @@ export async function runLiveMode({
 
 export function mount(document, api, adapter) {
   const form = document.getElementById('controls');
+  const workflowInput = document.getElementById('workflow');
+  const goalLabel = document.getElementById('goal-label');
   const goalInput = document.getElementById('goal');
   const thresholdInput = document.getElementById('threshold');
   const thresholdValue = document.getElementById('threshold-value');
@@ -52,6 +54,7 @@ export function mount(document, api, adapter) {
   const apiKeyInput = document.getElementById('api-key');
   const organizeButton = document.getElementById('organize');
   const applyButton = document.getElementById('apply');
+  const workflowNote = document.getElementById('workflow-note');
   const status = document.getElementById('status');
   const board = document.getElementById('board');
   let lastDecisions = [];
@@ -67,12 +70,36 @@ export function mount(document, api, adapter) {
     store.set({ [API_KEY_STORAGE_KEY]: apiKeyInput.value });
   });
 
-  function render(columns) {
+  function clearPreview() {
+    lastDecisions = [];
+    lastWindowId = null;
     board.innerHTML = '';
-    for (const key of ['focus', 'later', 'distraction', 'review']) {
+    status.textContent = '';
+    applyButton.disabled = true;
+  }
+
+  function syncWorkflowUi() {
+    const cleanup = workflowInput.value === 'cleanup';
+    goalLabel.textContent = cleanup ? 'Cleanup prompt' : 'Goal';
+    goalInput.placeholder = cleanup
+      ? 'What are these tabs meant to support?'
+      : 'What are you trying to get done?';
+    organizeButton.textContent = cleanup ? 'Analyze tabs' : 'Preview';
+    applyButton.hidden = cleanup;
+    workflowNote.hidden = !cleanup;
+    workflowNote.textContent = cleanup
+      ? 'Cleanup Review is preview only. No tabs will be moved, grouped, or closed.'
+      : '';
+  }
+
+  function render(columns) {
+    const workflowKey = workflowInput.value;
+    const workflow = workflowFor(workflowKey);
+    board.innerHTML = '';
+    for (const [key, category] of Object.entries(workflow.categories)) {
       const column = document.createElement('div');
       column.className = 'column';
-      column.innerHTML = `<h2>${GROUPS[key].label}</h2>`;
+      column.innerHTML = `<h2>${category.label}</h2>`;
       for (const decision of columns[key]) {
         const item = document.createElement('div');
         item.className = 'tab-item';
@@ -81,8 +108,8 @@ export function mount(document, api, adapter) {
       }
       board.appendChild(column);
     }
-    applyButton.disabled = !canApply(columns, modeInput.value, adapter.supportsApply);
-    if (modeInput.value === 'live' && adapter.supportsApply === false) {
+    applyButton.disabled = !canApply(columns, modeInput.value, adapter.supportsApply, workflowKey);
+    if (workflowKey === 'organize' && modeInput.value === 'live' && adapter.supportsApply === false) {
       status.textContent = 'Safari can preview categories, but its WebExtension API cannot move or group tabs.';
     }
   }
@@ -92,24 +119,25 @@ export function mount(document, api, adapter) {
     organizeButton.disabled = true;
     applyButton.disabled = true;
     const threshold = Number(thresholdInput.value);
+    const workflowKey = workflowInput.value;
     try {
       if (modeInput.value === 'sample') {
         lastWindowId = null;
-        const { decisions, columns } = runSampleMode(threshold);
+        const { decisions, columns } = runSampleMode(threshold, workflowKey);
         lastDecisions = decisions;
         render(columns);
         return;
       }
-      const { ok, error } = validateGoal(goalInput.value);
+      const { ok, error } = validateGoal(goalInput.value, workflowKey);
       if (!ok) { status.textContent = error; return; }
       const [currentTab] = await api.tabs.query({ active: true, currentWindow: true });
       lastWindowId = currentTab.windowId;
       const rawTabs = await adapter.captureTabs(api, lastWindowId);
       const tabs = sanitizeTabs(rawTabs);
-      const { columns } = await runLiveMode({
-        tabs, goal: goalInput.value, apiKey: apiKeyInput.value, threshold,
+      const { decisions, columns } = await runLiveMode({
+        tabs, goal: goalInput.value, apiKey: apiKeyInput.value, threshold, workflowKey,
       });
-      lastDecisions = [].concat(...Object.values(columns));
+      lastDecisions = decisions;
       render(columns);
     } catch (error) {
       status.textContent = error.message;
@@ -119,6 +147,11 @@ export function mount(document, api, adapter) {
   }
 
   async function apply() {
+    if (workflowInput.value !== 'organize') {
+      status.textContent = 'Cleanup Review is preview only. No tabs were changed.';
+      applyButton.disabled = true;
+      return;
+    }
     if (modeInput.value !== 'live' || adapter.supportsApply === false) {
       status.textContent = modeInput.value === 'sample'
         ? 'Sample mode: nothing to apply.'
@@ -147,15 +180,16 @@ export function mount(document, api, adapter) {
 
   organizeButton.addEventListener('click', organize);
   applyButton.addEventListener('click', apply);
-  modeInput.addEventListener('change', () => {
-    lastDecisions = [];
-    lastWindowId = null;
-    board.innerHTML = '';
-    status.textContent = '';
-    applyButton.disabled = true;
+  modeInput.addEventListener('change', clearPreview);
+  workflowInput.addEventListener('change', () => {
+    clearPreview();
+    syncWorkflowUi();
   });
   thresholdInput.addEventListener('input', () => {
     thresholdValue.textContent = thresholdInput.value;
-    if (lastDecisions.length) render(columnsFor(lastDecisions, Number(thresholdInput.value)));
+    if (lastDecisions.length) {
+      render(columnsFor(lastDecisions, Number(thresholdInput.value), workflowInput.value));
+    }
   });
+  syncWorkflowUi();
 }
