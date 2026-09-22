@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Tamer",
+  "version": "0.1.0",
+  "description": "A confidence-aware tab organizer powered by Jev.",
+  "permissions": ["tabs", "tabGroups", "storage"],
+  "host_permissions": ["https://api.typesafe.ai/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Tab Tamer" },
+  "icons": {}
+}
