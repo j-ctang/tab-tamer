@@ -1,38 +1,46 @@
-import { GROUPS, buildRequest, classify, categoryFor, sanitizeTabs } from './core.js';
-import { SAMPLE_TABS, SAMPLE_DECISIONS } from './fixtures.js';
+import { GROUPS, buildRequest, classify, categoryFor, sanitizeTabs, workflowFor } from './core.js';
+import { SAMPLE_WORKFLOWS } from './fixtures.js';
 import { sessionStore } from './api.js';
 
 const API_KEY_STORAGE_KEY = 'tabTamerApiKey';
 
-export function columnsFor(decisions, threshold) {
-  const columns = { focus: [], later: [], distraction: [], review: [] };
+export function columnsFor(decisions, threshold, workflowKey = 'organize') {
+  const workflow = workflowFor(workflowKey);
+  const columns = Object.fromEntries(Object.keys(workflow.categories).map(key => [key, []]));
   for (const decision of decisions) {
     columns[categoryFor(decision, threshold)].push(decision);
   }
   return columns;
 }
 
-export function validateGoal(goal) {
+export function validateGoal(goal, workflowKey = 'organize') {
   try {
-    buildRequest(SAMPLE_TABS.slice(0, 1), goal);
+    const { tabs } = SAMPLE_WORKFLOWS[workflowKey];
+    buildRequest(tabs.slice(0, 1), goal, workflowKey);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error.message };
   }
 }
 
-export function runSampleMode(threshold) {
-  return { decisions: SAMPLE_DECISIONS, columns: columnsFor(SAMPLE_DECISIONS, threshold) };
+export function runSampleMode(threshold, workflowKey = 'organize') {
+  const { decisions } = SAMPLE_WORKFLOWS[workflowKey];
+  return { decisions, columns: columnsFor(decisions, threshold, workflowKey) };
 }
 
-export function canApply(columns, mode, adapterSupportsApply) {
-  const hasApplyable = columns.focus.length + columns.later.length + columns.distraction.length > 0;
-  return mode === 'live' && adapterSupportsApply && hasApplyable;
+export function canApply(columns, mode, adapterSupportsApply, workflowKey = 'organize') {
+  const workflow = workflowFor(workflowKey);
+  const actionable = Object.entries(columns)
+    .filter(([key]) => key !== 'review')
+    .reduce((count, [, decisions]) => count + decisions.length, 0);
+  return workflow.supportsApply && mode === 'live' && adapterSupportsApply && actionable > 0;
 }
 
-export async function runLiveMode({ tabs, goal, apiKey, threshold, fetcher }) {
-  const { decisions, model, elapsed } = await classify(tabs, goal, apiKey, fetcher);
-  return { decisions, columns: columnsFor(decisions, threshold), model, elapsed };
+export async function runLiveMode({
+  tabs, goal, apiKey, threshold, fetcher, workflowKey = 'organize',
+}) {
+  const { decisions, model, elapsed } = await classify(tabs, goal, apiKey, fetcher, workflowKey);
+  return { decisions, columns: columnsFor(decisions, threshold, workflowKey), model, elapsed };
 }
 
 export function mount(document, api, adapter) {

@@ -19,3 +19,28 @@ export const SAMPLE_DECISIONS = [
   { ...SAMPLE_TABS[6], category: 'review', confidence: 0.4 },
   { ...SAMPLE_TABS[7], category: 'review', confidence: 0.3 },
 ];
+
+export const CLEANUP_SAMPLE_TABS = [
+  { id: 101, windowId: 1, title: 'Tab Tamer cleanup review spec', url: 'https://github.com/example/tab-tamer/blob/main/docs/cleanup-review-spec.md' },
+  { id: 102, windowId: 1, title: 'Merged: add browser adapter', url: 'https://github.com/example/tab-tamer/pull/12' },
+  { id: 103, windowId: 1, title: 'React useEffect guide', url: 'https://react.dev/reference/react/useEffect' },
+  { id: 104, windowId: 1, title: 'Another useEffect tutorial', url: 'https://example.com/react-use-effect-tutorial' },
+  { id: 105, windowId: 1, title: 'Manifest V2 migration guide (2023)', url: 'https://example.com/manifest-v2-2023' },
+  { id: 106, windowId: 1, title: 'Untitled dashboard', url: 'https://dashboard.example.com/' },
+  { id: 107, windowId: 1, title: 'Old Safari extension notes', url: 'https://notes.example.com/safari-extension-old' },
+];
+
+export const CLEANUP_SAMPLE_DECISIONS = [
+  { ...CLEANUP_SAMPLE_TABS[0], category: 'keep', confidence: 0.95 },
+  { ...CLEANUP_SAMPLE_TABS[1], category: 'finished', confidence: 0.91 },
+  { ...CLEANUP_SAMPLE_TABS[2], category: 'keep', confidence: 0.86 },
+  { ...CLEANUP_SAMPLE_TABS[3], category: 'redundant', confidence: 0.82 },
+  { ...CLEANUP_SAMPLE_TABS[4], category: 'stale', confidence: 0.9 },
+  { ...CLEANUP_SAMPLE_TABS[5], category: 'review', confidence: 0.42 },
+  { ...CLEANUP_SAMPLE_TABS[6], category: 'stale', confidence: 0.65 },
+];
+
+export const SAMPLE_WORKFLOWS = {
+  organize: { tabs: SAMPLE_TABS, decisions: SAMPLE_DECISIONS },
+  cleanup: { tabs: CLEANUP_SAMPLE_TABS, decisions: CLEANUP_SAMPLE_DECISIONS },
+};
