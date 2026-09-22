@@ -31,8 +31,10 @@ export async function runLiveMode({ tabs, goal, apiKey, threshold, fetcher }) {
 }
 
 export function mount(document, api, adapter) {
+  const form = document.getElementById('controls');
   const goalInput = document.getElementById('goal');
   const thresholdInput = document.getElementById('threshold');
+  const thresholdValue = document.getElementById('threshold-value');
   const modeInput = document.getElementById('mode');
   const apiKeyInput = document.getElementById('api-key');
   const organizeButton = document.getElementById('organize');
@@ -42,6 +44,8 @@ export function mount(document, api, adapter) {
   let lastDecisions = [];
   let lastWindowId = null;
   const store = sessionStore(api);
+
+  form.addEventListener('submit', (event) => event.preventDefault());
 
   store.get(API_KEY_STORAGE_KEY).then(saved => {
     if (saved[API_KEY_STORAGE_KEY]) apiKeyInput.value = saved[API_KEY_STORAGE_KEY];
@@ -64,21 +68,25 @@ export function mount(document, api, adapter) {
       }
       board.appendChild(column);
     }
-    applyButton.disabled = columns.focus.length + columns.later.length + columns.distraction.length === 0;
+    const hasApplyable = columns.focus.length + columns.later.length + columns.distraction.length > 0;
+    applyButton.disabled = !(modeInput.value === 'live' && hasApplyable);
   }
 
   async function organize() {
     status.textContent = '';
+    organizeButton.disabled = true;
+    applyButton.disabled = true;
     const threshold = Number(thresholdInput.value);
-    if (modeInput.value === 'sample') {
-      const { decisions, columns } = runSampleMode(threshold);
-      lastDecisions = decisions;
-      render(columns);
-      return;
-    }
-    const { ok, error } = validateGoal(goalInput.value);
-    if (!ok) { status.textContent = error; return; }
     try {
+      if (modeInput.value === 'sample') {
+        lastWindowId = null;
+        const { decisions, columns } = runSampleMode(threshold);
+        lastDecisions = decisions;
+        render(columns);
+        return;
+      }
+      const { ok, error } = validateGoal(goalInput.value);
+      if (!ok) { status.textContent = error; return; }
       const [currentTab] = await api.tabs.query({ active: true, currentWindow: true });
       lastWindowId = currentTab.windowId;
       const rawTabs = await adapter.captureTabs(api, lastWindowId);
@@ -90,19 +98,35 @@ export function mount(document, api, adapter) {
       render(columns);
     } catch (error) {
       status.textContent = error.message;
+    } finally {
+      organizeButton.disabled = false;
     }
   }
 
   async function apply() {
-    if (!lastDecisions.length || lastWindowId === null) return;
-    const threshold = Number(thresholdInput.value);
-    const { grouped, skipped } = await adapter.applyResult(lastDecisions, threshold, lastWindowId, api);
-    status.textContent = `Grouped ${grouped} tab(s), skipped ${skipped} that moved or fell out of range.`;
+    if (lastWindowId === null) {
+      status.textContent = 'Sample mode: nothing to apply.';
+      return;
+    }
+    if (!lastDecisions.length) return;
+    organizeButton.disabled = true;
+    applyButton.disabled = true;
+    try {
+      const threshold = Number(thresholdInput.value);
+      const { grouped, skipped } = await adapter.applyResult(lastDecisions, threshold, lastWindowId, api);
+      status.textContent = `Grouped ${grouped} tab(s), skipped ${skipped} that moved or fell out of range.`;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      organizeButton.disabled = false;
+      applyButton.disabled = false;
+    }
   }
 
   organizeButton.addEventListener('click', organize);
   applyButton.addEventListener('click', apply);
   thresholdInput.addEventListener('input', () => {
+    thresholdValue.textContent = thresholdInput.value;
     if (lastDecisions.length) render(columnsFor(lastDecisions, Number(thresholdInput.value)));
   });
 }

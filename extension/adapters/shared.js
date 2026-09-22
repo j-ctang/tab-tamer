@@ -1,4 +1,4 @@
-import { categoryFor } from '../core.js';
+import { categoryFor, sanitizeTabs } from '../core.js';
 
 export async function captureTabs(api, windowId) {
   return api.tabs.query({ windowId });
@@ -13,7 +13,8 @@ export async function partitionByCategory(decisions, threshold, windowId, api) {
     const category = categoryFor(decision, threshold);
     if (category === 'review') continue;
     const current = currentById.get(decision.id);
-    const stale = !current || current.url !== decision.url;
+    const sanitizedUrl = current ? sanitizeTabs([current])[0]?.url : undefined;
+    const stale = !current || sanitizedUrl === undefined || sanitizedUrl !== decision.url;
     if (stale) { skipped++; continue; }
     byCategory[category].push(decision.id);
   }

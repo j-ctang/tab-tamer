@@ -9,7 +9,7 @@ export async function applyResult(decisions, threshold, windowId, api) {
     if (!tabIds.length) continue;
     const win = await api.windows.create();
     const placeholderId = win.tabs?.[0]?.id;
-    await api.tabs.move(tabIds, { windowId: win.id });
+    await api.tabs.move(tabIds, { windowId: win.id, index: -1 });
     if (placeholderId !== undefined) await api.tabs.remove(placeholderId);
     grouped += tabIds.length;
   }

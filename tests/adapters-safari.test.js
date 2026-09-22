@@ -18,7 +18,10 @@ function fakeApi(queryResult) {
     api: {
       tabs: {
         query: async () => queryResult,
-        move: async (tabIds, { windowId }) => { moves.push({ tabIds, windowId }); },
+        move: async (tabIds, { windowId, index }) => {
+          assert.equal(typeof index, 'number');
+          moves.push({ tabIds, windowId, index });
+        },
         remove: async (tabId) => { removed.push(tabId); },
       },
       windows: {

@@ -38,3 +38,17 @@ test('partition marks stale tabs (changed url or left window) as skipped, not gr
   assert.deepEqual(byCategory.distraction, []);
   assert.equal(skipped, 2);
 });
+
+test('a current tab whose raw URL has a query string or fragment is not marked stale when the sanitized form matches', async () => {
+  const withVolatileUrls = [
+    { id: 1, windowId: 5, url: 'https://a.com/', title: 'A', category: 'focus', confidence: 0.95 },
+    { id: 2, windowId: 5, url: 'https://b.com/', title: 'B', category: 'focus', confidence: 0.9 },
+  ];
+  const api = { tabs: { query: async () => [
+    { id: 1, url: 'https://a.com/?utm_source=x' },
+    { id: 2, url: 'https://b.com/#section' },
+  ] } };
+  const { byCategory, skipped } = await partitionByCategory(withVolatileUrls, 0.8, 5, api);
+  assert.deepEqual(byCategory.focus.sort(), [1, 2]);
+  assert.equal(skipped, 0);
+});
