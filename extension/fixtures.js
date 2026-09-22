@@ -21,7 +21,7 @@ export const SAMPLE_DECISIONS = [
 ];
 
 export const CLEANUP_SAMPLE_TABS = [
-  { id: 101, windowId: 1, title: 'Tab Tamer cleanup review spec', url: 'https://github.com/example/tab-tamer/blob/main/docs/cleanup-review-spec.md' },
+  { id: 101, windowId: 1, title: 'Tab Tamer cleanup checklist', url: 'https://github.com/example/tab-tamer/issues/14' },
   { id: 102, windowId: 1, title: 'Merged: add browser adapter', url: 'https://github.com/example/tab-tamer/pull/12' },
   { id: 103, windowId: 1, title: 'React useEffect guide', url: 'https://react.dev/reference/react/useEffect' },
   { id: 104, windowId: 1, title: 'Another useEffect tutorial', url: 'https://example.com/react-use-effect-tutorial' },
